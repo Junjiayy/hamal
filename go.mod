@@ -1,3 +1,3 @@
-module github.com/hamal/core
+module github.com/Junjiayy/hamal-core
 
 go 1.17
