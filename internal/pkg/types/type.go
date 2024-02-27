@@ -1,0 +1,54 @@
+package types
+
+import (
+	"encoding/json"
+	"strings"
+)
+
+type (
+	BinlogParams struct {
+		EventId   string              `json:"event_id"` // 事件ID 唯一
+		Database  string              `json:"database"` // 库名
+		Table     string              `json:"table"`    // 表名
+		EventAt   int64               `json:"ts"`       // 事件时间
+		EventType string              `json:"type"`     // 事件类型
+		IsDdl     bool                `json:"isDdl"`    // 是否 ddl修改(ddl 修改不处理)
+		Data      []map[string]string `json:"data"`     // 更新后数据 (全量数据，根据 canal: canal.instance.filter.regex 的字段规则，没有字段规则就是全量)
+		Old       []map[string]string `json:"old"`      // 更新前数据 (只存在被更新的字段)
+		Source    interface{}         `json:"-"`        // 原始数据
+	}
+
+	innerBinlogParams BinlogParams
+)
+
+// UnmarshalJSON 重写 json 解析方法，如果是更新事件，记录本次更新的字段
+func (c *BinlogParams) UnmarshalJSON(bytes []byte) error {
+	innerParams := (*innerBinlogParams)(c)
+	if err := json.Unmarshal(bytes, innerParams); err != nil {
+		return err
+	}
+	innerParams.EventType = strings.ToLower(innerParams.EventType)
+
+	return nil
+}
+
+// SyncRule 同步规则
+type SyncRule struct {
+	Database          string            `json:"database"`             // 需要同步的库
+	Table             string            `json:"table"`                // 需要同步的表
+	PrimaryKey        string            `json:"primary_key"`          // 表中主键名称
+	LockColumns       []string          `json:"lock_columns"`         // 加锁时 依赖的字段
+	Columns           map[string]string `json:"columns"`              // 字段映射表 local:target 格式
+	SystemColumns     []string          `json:"-"`                    // 系统字段 (特殊逻辑)
+	SoftDeleteField   string            `json:"soft_delete_field"`    // 软删除字段名称 为空代表不支持软删除
+	UnSoftDeleteValue string            `json:"un_soft_delete_value"` // 未软删除值 SoftDeleteField 不为空且作为key获取到的值不相等及被软删除
+	//DataConditions    map[string][]DataCondition `json:"data_conditions"`      // 同步条件 key为 and或or  比对结果false 不同步
+	TargetType     string `json:"-"`      // 目标类型 mysql|es
+	Target         string `json:"target"` // 目标 mysql:connect.database.table es:connect.index
+	TargetDatabase string `json:"-"`
+	TargetTable    string `json:"-"`
+	//Type              string                     `json:"type"`                 // 同步类型 stats:统计 sync:同步
+	SyncType      string `json:"sync_type"`       // 具体同步或统计类型
+	JoinFieldName string `json:"join_field_name"` // 加入字段名 sync_type:join|inner 时存在
+	//SyncConditions    []SyncCondition            `json:"sync_conditions"`      // 同步条件 只允许and条件
+}
