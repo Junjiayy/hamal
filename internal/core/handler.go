@@ -94,7 +94,7 @@ func (h *handler) lockRecordByParams(params *types.SyncParams) (*redsync.Mutex, 
 	tpl := strings.TrimRight(strings.Repeat("%s_", len(params.Rule.LockColumns)), "_")
 	// 组装分布式锁的KEY
 	lockKey := fmt.Sprintf(strings.ReplaceAll(syncLockKeyTpl, ":keys", tpl), lockArgs...)
-	mutex := h.rs.NewMutex(lockKey, redsync.WithExpiry(3*time.Second), redsync.WithRetryDelay(10*time.Millisecond))
+	mutex := h.rs.NewMutex(lockKey, redsync.WithExpiry(3*time.Second), redsync.WithRetryDelay(100*time.Millisecond))
 	if err := mutex.Lock(); err != nil {
 		h.writeLog(params, err)
 		return nil, lockKey
