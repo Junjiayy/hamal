@@ -1,12 +1,11 @@
 package types
 
 import (
-	"sync"
 	"testing"
 )
 
 func TestSyncParams_GetUpdateValues(t *testing.T) {
-	wg := new(sync.WaitGroup)
+	wg := NewSyncWaitGroup()
 
 	rule := SyncRule{
 		Database: "test", Table: "tests", PrimaryKey: "id",

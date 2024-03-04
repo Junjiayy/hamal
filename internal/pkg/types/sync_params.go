@@ -9,20 +9,19 @@ import (
 // 一条 sql 可能修改多条数据，每条数据都会拆分成不同都子任务, 每个子任务都有自己都 SyncParams
 // 所以 SyncParams 不涉及并发
 type SyncParams struct {
-	wg            *sync.WaitGroup
+	wg            *syncWaitGroup
 	Rule          SyncRule // 只读，不用指针传递
 	Data, Old     map[string]string
 	binLogParams  *BinlogParams
 	RealEventType string // 和 BinlogParams 的 EventType 重复，用于记录真实执行同步的事件类型
 	joinColumn    string
-	errors        []error
 }
 
-func (s *SyncParams) GetWg() *sync.WaitGroup {
+func (s *SyncParams) GetWg() *syncWaitGroup {
 	return s.wg
 }
 
-func NewSyncParams(wg *sync.WaitGroup, rule *SyncRule, data, old map[string]string, binLog *BinlogParams) *SyncParams {
+func NewSyncParams(wg *syncWaitGroup, rule *SyncRule, data, old map[string]string, binLog *BinlogParams) *SyncParams {
 	params := _syncParamsPool.Get().(*SyncParams)
 	params.wg, params.Rule, params.Data, params.Old, params.binLogParams = wg, *rule, data, old, binLog
 	params.joinColumn, params.RealEventType = "", binLog.EventType
@@ -41,14 +40,6 @@ func (s *SyncParams) GetBingLogParams() *BinlogParams {
 
 func (s *SyncParams) SetBinLogParams(params *BinlogParams) {
 	s.binLogParams = params
-}
-
-func (s *SyncParams) AddError(err error) {
-	s.errors = append(s.errors, err)
-}
-
-func (s *SyncParams) Errors() []error {
-	return s.errors
 }
 
 // GetJoinColumn 当 SyncType 等于 SyncTypeInner 时只同步一个字段, 暂时缓存起来
@@ -131,8 +122,40 @@ func (s *SyncParams) Clone(eventType string) *SyncParams {
 	return params
 }
 
-var _syncParamsPool = sync.Pool{
-	New: func() interface{} {
-		return &SyncParams{}
-	},
+type syncWaitGroup struct {
+	sync.WaitGroup
+	mux    sync.Mutex
+	errors []error
 }
+
+func NewSyncWaitGroup() *syncWaitGroup {
+	wg := _syncWaitGroupPool.Get().(*syncWaitGroup)
+	wg.errors = nil
+
+	return wg
+}
+
+func (wg *syncWaitGroup) AddErr(errArr ...error) {
+	wg.mux.Lock()
+	defer wg.mux.Unlock()
+
+	wg.errors = append(wg.errors, errArr...)
+}
+
+func (wg *syncWaitGroup) Errors() []error {
+	return wg.errors
+}
+
+var (
+	_syncParamsPool = sync.Pool{
+		New: func() interface{} {
+			return &SyncParams{}
+		},
+	}
+
+	_syncWaitGroupPool = sync.Pool{
+		New: func() interface{} {
+			return &syncWaitGroup{}
+		},
+	}
+)

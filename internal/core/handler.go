@@ -208,5 +208,5 @@ func (h *handler) delete(params *types.SyncParams) error {
 func (h *handler) writeLog(params *types.SyncParams, err error) {
 	bytes, _ := json.Marshal(params)
 	zap.L().Error("同步失败", zap.ByteString("params", bytes), zap.Error(err))
-	params.AddError(err)
+	params.GetWg().AddErr(err)
 }
