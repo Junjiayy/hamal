@@ -2,9 +2,9 @@ package core
 
 import (
 	"context"
-	"github.com/Junjiayy/hamal/internal/pkg/configs"
-	"github.com/Junjiayy/hamal/internal/pkg/tools/logs"
-	"github.com/Junjiayy/hamal/internal/pkg/types"
+	"github.com/Junjiayy/hamal/pkg/configs"
+	"github.com/Junjiayy/hamal/pkg/tools/logs"
+	"github.com/Junjiayy/hamal/pkg/types"
 	"github.com/go-redis/redis/v8"
 	"go.uber.org/zap"
 	"io"

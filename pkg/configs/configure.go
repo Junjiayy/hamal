@@ -1,6 +1,8 @@
 package configs
 
-import "github.com/Junjiayy/hamal/internal/pkg/types"
+import (
+	"github.com/Junjiayy/hamal/pkg/types"
+)
 
 type (
 	SyncConfig struct {

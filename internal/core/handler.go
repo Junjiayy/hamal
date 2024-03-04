@@ -3,7 +3,7 @@ package core
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/Junjiayy/hamal/internal/pkg/types"
+	"github.com/Junjiayy/hamal/pkg/types"
 	"github.com/go-redsync/redsync/v4"
 	"github.com/panjf2000/ants/v2"
 	"github.com/pkg/errors"

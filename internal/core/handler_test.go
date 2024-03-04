@@ -1,14 +1,13 @@
 package core
 
 import (
-	"github.com/Junjiayy/hamal/internal/pkg/types"
+	types "github.com/Junjiayy/hamal/pkg/types"
 	"github.com/go-redis/redis/v8"
 	"github.com/go-redsync/redsync/v4"
 	"github.com/go-redsync/redsync/v4/redis/goredis/v8"
 	"github.com/panjf2000/ants/v2"
 	"github.com/pkg/errors"
 	"os"
-	"sync"
 	"testing"
 )
 
@@ -90,7 +89,7 @@ func TestMain(m *testing.M) {
 }
 
 func getSyncParams() *types.SyncParams {
-	wg := new(sync.WaitGroup)
+	wg := types.NewSyncWaitGroup()
 
 	rule := types.SyncRule{
 		Database: "test", Table: "tests", PrimaryKey: "id",
