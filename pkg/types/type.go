@@ -7,15 +7,16 @@ import (
 
 type (
 	BinlogParams struct {
-		EventId   string              `json:"event_id"` // 事件ID 唯一
-		Database  string              `json:"database"` // 库名
-		Table     string              `json:"table"`    // 表名
-		EventAt   int64               `json:"ts"`       // 事件时间
-		EventType string              `json:"type"`     // 事件类型
-		IsDdl     bool                `json:"isDdl"`    // 是否 ddl修改(ddl 修改不处理)
-		Data      []map[string]string `json:"data"`     // 更新后数据 (全量数据，根据 canal: canal.instance.filter.regex 的字段规则，没有字段规则就是全量)
-		Old       []map[string]string `json:"old"`      // 更新前数据 (只存在被更新的字段)
-		Source    interface{}         `json:"-"`        // 原始数据
+		EventId   string              `json:"event_id" binding:"required"` // 事件ID 唯一
+		Database  string              `json:"database" binding:"required"` // 库名
+		Table     string              `json:"table" binding:"required"`    // 表名
+		EventAt   int64               `json:"ts" binding:"required"`       // 事件时间
+		EventType string              `json:"type" binding:"required"`     // 事件类型
+		IsDdl     bool                `json:"isDdl" binding:"required"`    // 是否 ddl修改(ddl 修改不处理)
+		Data      []map[string]string `json:"data" binding:"required"`     // 更新后数据 (全量数据，根据 canal: canal.instance.filter.regex 的字段规则，没有字段规则就是全量)
+		Old       []map[string]string `json:"old" binding:"required"`      // 更新前数据 (只存在被更新的字段)
+		Source    interface{}         `json:"-" binding:"omitempty"`       // 原始数据
+		reader    Reader              // 读取到数据的读取器
 	}
 
 	innerBinlogParams BinlogParams
@@ -30,6 +31,11 @@ func (c *BinlogParams) UnmarshalJSON(bytes []byte) error {
 	innerParams.EventType = strings.ToLower(innerParams.EventType)
 
 	return nil
+}
+
+//
+func (c *BinlogParams) Release() error {
+	return c.reader.Complete(c)
 }
 
 // SyncRule 同步规则

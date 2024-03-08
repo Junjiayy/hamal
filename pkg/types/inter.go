@@ -19,16 +19,3 @@ type (
 		FilterColumns(params *SyncParams, columns []string) ([]string, error, bool)
 	}
 )
-
-// 读取器构造函数集合
-var _readers map[string]func(i int, conf interface{}) (Reader, error)
-
-// RegisterReaderConstructor 注册读取器构造函数
-func RegisterReaderConstructor(name string, fn func(i int, conf interface{}) (Reader, error)) {
-	_readers[name] = fn
-}
-
-// GetReaderConstructor 获取读取器构造函数
-func GetReaderConstructor(name string) func(i int, conf interface{}) (Reader, error) {
-	return _readers[name]
-}

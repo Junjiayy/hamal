@@ -3,11 +3,16 @@ package core
 import (
 	"context"
 	"github.com/Junjiayy/hamal/pkg/configs"
+	"github.com/Junjiayy/hamal/pkg/core/readers"
 	"github.com/Junjiayy/hamal/pkg/tools/logs"
 	"github.com/Junjiayy/hamal/pkg/types"
 	"github.com/go-redis/redis/v8"
+	"github.com/go-redsync/redsync/v4"
+	"github.com/go-redsync/redsync/v4/redis/goredis/v8"
+	"github.com/panjf2000/ants/v2"
 	"go.uber.org/zap"
 	"io"
+	"log"
 	"sync"
 )
 
@@ -20,6 +25,38 @@ type Core struct {
 	redisCli   *redis.Client
 }
 
+func NewCore(conf *configs.SyncConfig, redisCli *redis.Client) *Core {
+	ctx, cancelFunc := context.WithCancel(context.Background())
+
+	c := &Core{
+		conf: conf, redisCli: redisCli, ctx: ctx,
+		wg: new(sync.WaitGroup), cancelFunc: cancelFunc,
+		h: &handler{
+			ws: make(map[string]types.Writer),
+			rs: redsync.New(goredis.NewPool(redisCli)),
+		},
+	}
+
+	pool, err := ants.NewPoolWithFunc(conf.PoolSize, c.h.sync, ants.WithNonblocking(true))
+	if err != nil {
+		log.Fatalf("create sync task pool failure: %v", err)
+	}
+
+	c.h.pool = pool
+
+	return c
+}
+
+func (c *Core) SetFilter(filter types.Filter) *Core {
+	c.h.filter = filter
+	return c
+}
+
+func (c *Core) SetWriter(name string, writer types.Writer) *Core {
+	c.h.ws[name] = writer
+	return c
+}
+
 func (c *Core) Run() (err error) {
 	defer func() {
 		if err != nil {
@@ -29,14 +66,13 @@ func (c *Core) Run() (err error) {
 		}
 	}()
 
-	readerConstructor := types.GetReaderConstructor(c.conf.Reader)
-
-	for i := 0; i < c.conf.ReaderConcurrencyNum; i++ {
-		reader, err := readerConstructor(i, c.conf.ReaderConfig)
+	for _, config := range c.conf.Readers {
+		constructor := readers.GetReaderConstructor(config.Name)
+		reader, err := constructor(config.Params, c.wg)
 		if err != nil {
 			return err
 		}
-		c.wg.Add(1)
+
 		go c.listenByReader(reader)
 	}
 
@@ -46,7 +82,7 @@ func (c *Core) Run() (err error) {
 }
 
 func (c *Core) listenByReader(reader types.Reader) {
-	defer c.wg.Done()
+	defer reader.Close()
 
 	for {
 		select {
