@@ -68,7 +68,7 @@ func (c *Core) Run() (err error) {
 
 	for _, config := range c.conf.Readers {
 		constructor := readers.GetReaderConstructor(config.Name)
-		reader, err := constructor(config.Params, c.wg)
+		reader, err := constructor(config.Params, c.wg, c.ctx)
 		if err != nil {
 			return err
 		}

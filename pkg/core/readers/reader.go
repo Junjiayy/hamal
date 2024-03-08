@@ -1,11 +1,12 @@
 package readers
 
 import (
+	"context"
 	"github.com/Junjiayy/hamal/pkg/types"
 	"sync"
 )
 
-type ReaderConstructor func(interface{}, *sync.WaitGroup) (types.Reader, error)
+type ReaderConstructor func(interface{}, *sync.WaitGroup, context.Context) (types.Reader, error)
 
 // 读取器构造函数集合
 var (
