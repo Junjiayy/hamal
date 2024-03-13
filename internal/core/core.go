@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/Junjiayy/hamal/pkg/configs"
 	"github.com/Junjiayy/hamal/pkg/core/readers"
+	"github.com/Junjiayy/hamal/pkg/core/writers"
 	"github.com/Junjiayy/hamal/pkg/tools/logs"
 	"github.com/Junjiayy/hamal/pkg/types"
 	"github.com/go-redis/redis/v8"
@@ -32,8 +33,9 @@ func NewCore(conf *configs.SyncConfig, redisCli *redis.Client) *Core {
 		conf: conf, redisCli: redisCli, ctx: ctx,
 		wg: new(sync.WaitGroup), cancelFunc: cancelFunc,
 		h: &handler{
-			ws: make(map[string]types.Writer),
-			rs: redsync.New(goredis.NewPool(redisCli)),
+			ws:     make(map[string]writers.Writer),
+			rs:     redsync.New(goredis.NewPool(redisCli)),
+			filter: new(emptyFilter),
 		},
 	}
 
@@ -52,7 +54,7 @@ func (c *Core) SetFilter(filter types.Filter) *Core {
 	return c
 }
 
-func (c *Core) SetWriter(name string, writer types.Writer) *Core {
+func (c *Core) SetWriter(name string, writer writers.Writer) *Core {
 	c.h.ws[name] = writer
 	return c
 }
@@ -73,6 +75,7 @@ func (c *Core) Run() (err error) {
 			return err
 		}
 
+		c.wg.Add(1)
 		go c.listenByReader(reader)
 	}
 
@@ -81,7 +84,8 @@ func (c *Core) Run() (err error) {
 	return nil
 }
 
-func (c *Core) listenByReader(reader types.Reader) {
+func (c *Core) listenByReader(reader readers.Reader) {
+	defer c.wg.Done()
 	defer reader.Close()
 
 	for {
@@ -99,7 +103,7 @@ func (c *Core) listenByReader(reader types.Reader) {
 			}
 
 			if !binLogParams.IsDdl {
-				swg, ruleKey := types.NewSyncWaitGroup(), binLogParams.Database+"-"+binLogParams.Table
+				swg, ruleKey := types.NewSyncWaitGroup(), binLogParams.Database+"_"+binLogParams.Table
 				rules, ok := c.conf.Rules[ruleKey]
 				if !ok {
 					zap.L().Info("rule not exists", zap.String("key", ruleKey))

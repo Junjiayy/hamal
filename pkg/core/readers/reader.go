@@ -6,35 +6,42 @@ import (
 	"sync"
 )
 
-type ReaderConstructor func(interface{}, *sync.WaitGroup, context.Context) (types.Reader, error)
+type (
+	Reader interface {
+		Read() (*types.BinlogParams, error)
+		Complete(params *types.BinlogParams) error
+		Close() error
+	}
 
-// 读取器构造函数集合
+	ReaderConstructor func(interface{}, *sync.WaitGroup, context.Context) (Reader, error)
+)
+
 var (
-	_readers       = make(map[string]ReaderConstructor)
-	_readerConfigs = make(map[string]func() interface{})
+	_readerConstructors       = make(map[string]ReaderConstructor)  // 读取器构造函数 映射表
+	_readerConfigConstructors = make(map[string]func() interface{}) // 读取器配置类型构造函数 映射表
 )
 
 func init() {
-	RegisterReaderConstructor("web", NewHttpReaderFunc)
-	RegisterReaderConfigConstructor("web", NewHttpReaderConfigFunc)
+	SetReaderConstructor(types.ReaderTypeWeb, NewHttpReaderFunc)
+	SetReaderConfigConstructor(types.ReaderTypeWeb, NewHttpReaderConfigFunc)
 }
 
-// RegisterReaderConstructor 注册读取器构造函数
-func RegisterReaderConstructor(name string, fn ReaderConstructor) {
-	_readers[name] = fn
+// SetReaderConstructor 注册读取器构造函数
+func SetReaderConstructor(name string, fn ReaderConstructor) {
+	_readerConstructors[name] = fn
 }
 
 // GetReaderConstructor 获取读取器构造函数
 func GetReaderConstructor(name string) ReaderConstructor {
-	return _readers[name]
+	return _readerConstructors[name]
 }
 
-// RegisterReaderConfigConstructor 注册读取器配置构造函数
-func RegisterReaderConfigConstructor(name string, fn func() interface{}) {
-	_readerConfigs[name] = fn
+// SetReaderConfigConstructor 注册读取器配置构造函数
+func SetReaderConfigConstructor(name string, fn func() interface{}) {
+	_readerConfigConstructors[name] = fn
 }
 
 // GetReaderConfigConstructor 获取读取器配置构造函数
 func GetReaderConfigConstructor(name string) func() interface{} {
-	return _readerConfigs[name]
+	return _readerConfigConstructors[name]
 }

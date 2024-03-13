@@ -14,3 +14,10 @@ const SyncTypeJoin = "join"   // 可复制的字段全部拷贝到目标数据�
 const SyncTypeInner = "inner" // 只允许复制一个字段，复制到目标数据源符合记录的某个字段，这个字段一定是一个数组
 
 const identifyIdColumnSeparator = "-" // 标识ID字段分隔符
+
+const ReaderTypeWeb = "web" // web 类型读取器
+
+const DataSourceMysql = "mysql" // mysql 类型数据源
+
+const TimestampCreatedAt = "created_at" // 创建时间戳
+const TimestampUpdatedAt = "updated_at" // 更新时间戳

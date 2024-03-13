@@ -10,10 +10,11 @@ import (
 // 所以 SyncParams 不涉及并发
 type SyncParams struct {
 	wg            *syncWaitGroup
-	Rule          SyncRule // 只读，不用指针传递
-	Data, Old     map[string]string
+	Rule          SyncRule          `json:"rule"` // 只读，不用指针传递
+	Data          map[string]string `json:"data"`
+	Old           map[string]string `json:"old"`
 	binLogParams  *BinlogParams
-	RealEventType string // 和 BinlogParams 的 EventType 重复，用于记录真实执行同步的事件类型
+	RealEventType string `json:"real_event_type"` // 和 BinlogParams 的 EventType 重复，用于记录真实执行同步的事件类型
 	joinColumn    string
 }
 

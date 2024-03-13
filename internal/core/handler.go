@@ -1,8 +1,8 @@
 package core
 
 import (
-	"encoding/json"
 	"fmt"
+	"github.com/Junjiayy/hamal/pkg/core/writers"
 	"github.com/Junjiayy/hamal/pkg/types"
 	"github.com/go-redsync/redsync/v4"
 	"github.com/panjf2000/ants/v2"
@@ -14,7 +14,7 @@ import (
 
 type handler struct {
 	filter types.Filter
-	ws     map[string]types.Writer
+	ws     map[string]writers.Writer
 	pool   *ants.PoolWithFunc
 	rs     *redsync.Redsync
 }
@@ -48,7 +48,7 @@ func (h *handler) sync(paramsInter interface{}) {
 	defer params.Recycle()
 	defer func() {
 		if err := recover(); err != nil {
-			h.writeLog(params, errors.Errorf("%v", err))
+			h.writeLog(params, errors.Errorf("recover: %v", err))
 		}
 	}()
 
@@ -72,14 +72,12 @@ func (h *handler) sync(paramsInter interface{}) {
 		err = h.delete(params)
 	}
 
-	if err == nil {
+	if err != nil && !errors.Is(err, emptyErr) {
+		h.writeLog(params, err)
+	} else if err == nil {
 		if err := h.filter.InsertEventRecord(params, columns); err != nil {
 			h.writeLog(params, err)
 		}
-	}
-
-	if err != nil && !errors.Is(err, emptyErr) {
-		h.writeLog(params, err)
 	}
 }
 
@@ -118,9 +116,9 @@ func (h *handler) insert(params *types.SyncParams) ([]string, error) {
 		return nil, emptyErr
 	}
 
-	writer, ok := h.ws[params.Rule.TargetType]
+	writer, ok := h.ws[params.Rule.Target]
 	if !ok {
-		return nil, errors.Errorf("undefined writer %s", params.Rule.TargetType)
+		return nil, errors.Errorf("undefined writer %s", params.Rule.Target)
 	}
 
 	var updatedColumns []string
@@ -206,7 +204,16 @@ func (h *handler) delete(params *types.SyncParams) error {
 
 // writeLog 写入日志，并追加错误到本次执行参数中
 func (h *handler) writeLog(params *types.SyncParams, err error) {
-	bytes, _ := json.Marshal(params)
-	zap.L().Error("同步失败", zap.ByteString("params", bytes), zap.Error(err))
+	zap.L().Error("同步失败", zap.Reflect("params", params), zap.Error(err))
 	params.GetWg().AddErr(err)
+}
+
+type emptyFilter struct{}
+
+func (e *emptyFilter) InsertEventRecord(params *types.SyncParams, updatedColumns []string) error {
+	return nil
+}
+
+func (e *emptyFilter) FilterColumns(params *types.SyncParams, columns []string) ([]string, error, bool) {
+	return columns, nil, true
 }

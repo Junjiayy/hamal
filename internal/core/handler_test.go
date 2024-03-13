@@ -1,6 +1,7 @@
 package core
 
 import (
+	"github.com/Junjiayy/hamal/pkg/core/writers"
 	types "github.com/Junjiayy/hamal/pkg/types"
 	"github.com/go-redis/redis/v8"
 	"github.com/go-redsync/redsync/v4"
@@ -76,7 +77,7 @@ func TestMain(m *testing.M) {
 	})
 
 	h = &handler{
-		filter: wsf, ws: map[string]types.Writer{"test": wsf},
+		filter: wsf, ws: map[string]writers.Writer{"test": wsf},
 		rs: redsync.New(goredis.NewPool(redisCli)),
 	}
 

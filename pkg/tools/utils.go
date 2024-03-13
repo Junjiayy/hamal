@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // UnmarshalYamlAndBuildDefault 解析yaml文件并赋值默认值
@@ -133,4 +134,20 @@ func JudgmentEval(first, two string, operator string) bool {
 	}
 
 	return false
+}
+
+// CamelToSnake 驼峰式字符串转下划线式
+func CamelToSnake(dest string) string {
+	var result strings.Builder
+	for i, r := range dest {
+		if unicode.IsUpper(r) {
+			if i > 0 {
+				result.WriteByte('_')
+			}
+			result.WriteRune(unicode.ToLower(r))
+		} else {
+			result.WriteRune(r)
+		}
+	}
+	return result.String()
 }

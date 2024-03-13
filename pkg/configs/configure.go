@@ -1,6 +1,7 @@
 package configs
 
 import (
+	"github.com/Junjiayy/hamal/pkg/core/datasources"
 	"github.com/Junjiayy/hamal/pkg/core/readers"
 	"github.com/Junjiayy/hamal/pkg/types"
 	"gopkg.in/yaml.v2"
@@ -8,9 +9,15 @@ import (
 
 type (
 	SyncConfig struct {
-		PoolSize int                          `json:"pool_size" default:"50"` // 协程池大小
-		Readers  []*ReaderConfig              `json:"readers"`                // 读取器配置
-		Rules    map[string][]*types.SyncRule `json:"rules"`                  // 同步规则
+		DataSource  *datasources.DataSourceConfig `json:"datasource" yaml:"datasource"`
+		PoolSize    int                           `json:"pool_size,omitempty" yaml:"pool_size,omitempty" default:"50"` // 协程池大小
+		Readers     []*ReaderConfig               `json:"readers" yaml:"readers"`                                      // 读取器配置
+		Rules       map[string][]*types.SyncRule  `json:"rules" yaml:"rules"`                                          // 同步规则
+		RedisConfig struct {
+			Addr     string `json:"addr" yaml:"addr"`
+			Password string `json:"password,omitempty" yaml:"password,omitempty"`
+			DB       int    `json:"db,omitempty" yaml:"db,omitempty" default:"0"`
+		} `json:"redis" yaml:"redis"`
 	}
 
 	ReaderConfig struct {

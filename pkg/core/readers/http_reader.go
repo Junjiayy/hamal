@@ -29,7 +29,7 @@ type (
 
 var configAssertErr = errors.New("reader config assert failed")
 
-func NewHttpReaderFunc(conf interface{}, wg *sync.WaitGroup, ctx context.Context) (types.Reader, error) {
+func NewHttpReaderFunc(conf interface{}, wg *sync.WaitGroup, ctx context.Context) (Reader, error) {
 	config, ok := conf.(*HttpReaderConfig)
 	if !ok {
 		return nil, configAssertErr
@@ -42,6 +42,7 @@ func NewHttpReaderFunc(conf interface{}, wg *sync.WaitGroup, ctx context.Context
 	engine := gin.Default()
 	engine.POST(reader.conf.PushPath, reader.httpAcceptHandle)
 	reader.srv = &http.Server{Addr: reader.conf.Listen, Handler: engine}
+	wg.Add(1)
 	go reader.listen()
 
 	return reader, nil
@@ -60,22 +61,26 @@ func (h *HttpReader) httpAcceptHandle(ctx *gin.Context) {
 		return
 	}
 
+	timeout, cancelFunc := context.WithTimeout(ctx.Request.Context(), 1*time.Second)
+	defer cancelFunc()
+
 	select {
 	case <-h.ctx.Done():
 		ctx.JSON(http.StatusInternalServerError, gin.H{
-			"code":    http.StatusInternalServerError,
-			"message": "service closed",
+			"code": http.StatusInternalServerError, "message": "service closed",
 		})
 	case h.params <- binLogParams:
 		ctx.JSON(http.StatusAccepted, gin.H{
 			"code": http.StatusAccepted,
 		})
+	case <-timeout.Done():
+		ctx.JSON(http.StatusRequestTimeout, gin.H{
+			"code": http.StatusAccepted, "message": "timeout",
+		})
 	}
 }
 
 func (h *HttpReader) listen() {
-	h.wg.Add(1)
-
 	defer h.wg.Done()
 	if err := h.srv.ListenAndServe(); err != nil &&
 		err != http.ErrServerClosed {
