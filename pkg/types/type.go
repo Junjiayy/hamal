@@ -51,4 +51,5 @@ type SyncRule struct {
 	SyncType      string `json:"sync_type" yaml:"sync_type"`                                 // 具体同步或统计类型
 	JoinFieldName string `json:"join_field_name,omitempty" yaml:"join_field_name,omitempty"` // 加入字段名 sync_type:join|inner 时存在
 	//SyncConditions    []SyncCondition            `json:"sync_conditions"`      // 同步条件 只允许and条件
+	TargetExtraParams map[string]string `json:"target_extra_params,omitempty" yaml:"target_extra_params,omitempty"` // 目标额外参数，常量同步时一起写入目标表
 }

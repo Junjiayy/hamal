@@ -65,23 +65,26 @@ func (s *SyncParams) GetJoinColumn() string {
 func (s *SyncParams) GetUpdateValues(updatedColumns []string) interface{} {
 
 	switch s.Rule.SyncType {
-	case SyncTypeCopy: // 拷贝记录，作为目标表的一条新记录
-		record := make(map[string]string, len(updatedColumns))
+	case SyncTypeCopy, SyncTypeJoin: // 拷贝记录，作为目标表的一条新记录
+		record := make(map[string]string, len(updatedColumns)+len(s.Rule.TargetExtraParams))
 		for _, column := range updatedColumns {
 			record[s.Rule.Columns[column]] = s.Data[column]
+		}
+
+		if s.Rule.TargetExtraParams != nil {
+			for extraColumn, extraValue := range s.Rule.TargetExtraParams {
+				record[extraColumn] = extraValue
+			}
+		}
+
+		if s.Rule.SyncType == SyncTypeJoin {
+			return map[string]interface{}{
+				s.Rule.Columns[s.Rule.PrimaryKey]: s.Data[s.Rule.PrimaryKey],
+				s.Rule.JoinFieldName:              record,
+			}
 		}
 
 		return record
-	case SyncTypeJoin: // 拷贝记录, 作为目标表的某个记录的一个字段
-		record := make(map[string]string, len(updatedColumns))
-		for _, column := range updatedColumns {
-			record[s.Rule.Columns[column]] = s.Data[column]
-		}
-
-		return map[string]interface{}{
-			s.Rule.Columns[s.Rule.PrimaryKey]: s.Data[s.Rule.PrimaryKey],
-			s.Rule.JoinFieldName:              record,
-		}
 	case SyncTypeInner:
 		// 只取一个字段, 作为目标表的某个字段的 一个元素, 例如es数组 add
 		return s.Data[s.GetJoinColumn()]

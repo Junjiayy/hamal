@@ -72,9 +72,7 @@ func (h *HttpReader) httpAcceptHandle(ctx *gin.Context) {
 			"code": http.StatusInternalServerError, "message": "service closed",
 		})
 	case h.params <- binLogParams:
-		ctx.JSON(http.StatusAccepted, gin.H{
-			"code": http.StatusAccepted,
-		})
+		ctx.JSON(http.StatusAccepted, gin.H{"code": http.StatusAccepted})
 	case <-timeout.Done():
 		ctx.JSON(http.StatusRequestTimeout, gin.H{
 			"code": http.StatusAccepted, "message": "timeout",
