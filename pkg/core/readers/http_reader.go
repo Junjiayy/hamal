@@ -22,8 +22,10 @@ type (
 	}
 
 	HttpReaderConfig struct {
-		Listen   string `json:"listen" yaml:"listen"`
-		PushPath string `json:"push_path" yaml:"push_path"`
+		Listen       string        `json:"listen" yaml:"listen"`                                                  // 监听端口
+		PushPath     string        `json:"push_path" yaml:"push_path"`                                            // 请求接收路径
+		PreParamsLen int32         `json:"pre_params_len,omitempty" yaml:"pre_params_len,omitempty" default:"10"` // params 管道缓冲长度
+		PushTimeout  time.Duration `json:"push_timeout,omitempty" yaml:"push_timeout,omitempty" default:"1s"`     // 超时时间
 	}
 )
 
@@ -35,7 +37,7 @@ func NewHttpReaderFunc(conf interface{}, wg *sync.WaitGroup, ctx context.Context
 		return nil, configAssertErr
 	}
 	reader := &HttpReader{
-		params: make(chan *types.BinlogParams, 10),
+		params: make(chan *types.BinlogParams, config.PreParamsLen),
 		wg:     wg, ctx: ctx, conf: config,
 	}
 
@@ -61,7 +63,7 @@ func (h *HttpReader) httpAcceptHandle(ctx *gin.Context) {
 		return
 	}
 
-	timeout, cancelFunc := context.WithTimeout(ctx.Request.Context(), 1*time.Second)
+	timeout, cancelFunc := context.WithTimeout(ctx.Request.Context(), h.conf.PushTimeout)
 	defer cancelFunc()
 
 	select {

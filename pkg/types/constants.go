@@ -17,7 +17,8 @@ const identifyIdColumnSeparator = "-" // 标识ID字段分隔符
 
 const ReaderTypeWeb = "web" // web 类型读取器
 
-const DataSourceMysql = "mysql" // mysql 类型数据源
+const DataSourceMysql = "mysql"      // mysql 类型数据源
+const DataSourceElasticSearch = "es" // es 类型数据源
 
 const TimestampCreatedAt = "created_at" // 创建时间戳
 const TimestampUpdatedAt = "updated_at" // 更新时间戳

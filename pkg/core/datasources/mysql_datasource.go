@@ -19,7 +19,12 @@ func NewMysqlDataSource() DataSource {
 func (m *MysqlDataSource) SetDataSource(conf *DataSourceConfig) error {
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=Local",
 		conf.Username, conf.Password, conf.Host, conf.Port, conf.Target)
-	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Info)})
+	connectConfig := &gorm.Config{Logger: logger.Default.LogMode(logger.Info)}
+	if conf.Debug {
+		connectConfig.Logger = logger.Default.LogMode(logger.Warn)
+	}
+
+	db, err := gorm.Open(mysql.Open(dsn), connectConfig)
 	if err != nil {
 		return err
 	}

@@ -11,6 +11,7 @@ type (
 		Username string `json:"username,omitempty" yaml:"username,omitempty"` // 账户 可为空
 		Password string `json:"password,omitempty" yaml:"password,omitempty"` // 密码 可为空
 		Target   string `json:"target,omitempty" yaml:"target,omitempty"`     // type 为mysql时未目标库 es时为空
+		Debug    bool   `json:"debug,omitempty" yaml:"debug,omitempty"`
 	}
 
 	DataSource interface {
@@ -23,6 +24,7 @@ var _datasourceConstructors = make(map[string]func() DataSource) // 数据源构
 
 func init() {
 	SetDataSourceConstructor(types.DataSourceMysql, NewMysqlDataSource)
+	SetDataSourceConstructor(types.DataSourceElasticSearch, NewElasticSearchDataSource)
 }
 
 // SetDataSourceConstructor 设置数据源构造函数

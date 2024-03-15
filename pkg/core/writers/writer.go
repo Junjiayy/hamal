@@ -11,7 +11,6 @@ type (
 	}
 
 	Writer interface {
-		Type() string
 		Insert(params *types.SyncParams, values interface{}) error
 		Update(params *types.SyncParams, values interface{}) error
 		Delete(params *types.SyncParams) error
@@ -24,6 +23,7 @@ var _writerConstructors = make(map[string]WriterConstructor) // 写入构造函�
 
 func init() {
 	SetWriterConstructor(types.DataSourceMysql, NewMysqlWriter)
+	SetWriterConstructor(types.DataSourceElasticSearch, NewElasticSearchWriter)
 }
 
 func SetWriterConstructor(name string, fn WriterConstructor) {
