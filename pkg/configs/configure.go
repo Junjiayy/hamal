@@ -3,6 +3,7 @@ package configs
 import (
 	"github.com/Junjiayy/hamal/pkg/core/datasources"
 	"github.com/Junjiayy/hamal/pkg/core/readers"
+	"github.com/Junjiayy/hamal/pkg/tools"
 	"github.com/Junjiayy/hamal/pkg/types"
 	"gopkg.in/yaml.v2"
 )
@@ -39,7 +40,7 @@ func (c *ReaderConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	if err != nil {
 		return err
 	}
-	if err := yaml.Unmarshal(paramsData, params); err != nil {
+	if err := tools.UnmarshalYamlAndBuildDefault(paramsData, params); err != nil {
 		return err
 	}
 	c.Name, c.Params = innerConfig.Name, params
