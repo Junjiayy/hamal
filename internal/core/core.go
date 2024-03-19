@@ -86,7 +86,6 @@ func (c *Core) Run() (err error) {
 
 func (c *Core) listenByReader(reader readers.Reader) {
 	defer c.wg.Done()
-	defer reader.Close()
 
 	for {
 		select {
@@ -103,35 +102,47 @@ func (c *Core) listenByReader(reader readers.Reader) {
 			}
 
 			if !binLogParams.IsDdl {
-				swg, ruleKey := types.NewSyncWaitGroup(), binLogParams.Database+"_"+binLogParams.Table
-				rules, ok := c.conf.Rules[ruleKey]
-				if !ok {
-					zap.L().Info("rule not exists", zap.String("key", ruleKey))
-				}
+				err = c.submitTaskExec(binLogParams)
+			}
 
-				for _, rule := range rules {
-					for i, datum := range binLogParams.Data {
-						var old map[string]string
-						if len(binLogParams.Old) > i {
-							old = binLogParams.Old[i]
-						}
-
-						params := types.NewSyncParams(swg, rule, datum, old, binLogParams)
-						if err := c.h.invoke(params); err != nil {
-							zap.L().Error("sync failed", logs.ParseErr(err)...)
-						}
-					}
-				}
-
-				swg.Wait()
-				if errArr := swg.Errors(); len(errArr) == 0 {
-					if err := reader.Complete(binLogParams); err != nil {
-						zap.L().Error("commit message failed", zap.Error(err))
-					}
+			if err == nil {
+				if err := reader.Complete(binLogParams); err != nil {
+					zap.L().Error("commit message failed", zap.Error(err))
 				}
 			}
 		}
 	}
+}
+
+func (c *Core) submitTaskExec(binLogParams *types.BinlogParams) error {
+	swg, ruleKey := types.NewSyncWaitGroup(), binLogParams.Database+"_"+binLogParams.Table
+	defer swg.Recycle()
+
+	rules, ok := c.conf.Rules[ruleKey]
+	if !ok {
+		zap.L().Info("rule not exists", zap.String("key", ruleKey))
+	}
+
+	for _, rule := range rules {
+		for i, datum := range binLogParams.Data {
+			var old map[string]string
+			if len(binLogParams.Old) > i {
+				old = binLogParams.Old[i]
+			}
+
+			params := types.NewSyncParams(swg, rule, datum, old, binLogParams)
+			if err := c.h.invoke(params); err != nil {
+				zap.L().Error("sync failed", logs.ParseErr(err)...)
+			}
+		}
+	}
+
+	swg.Wait()
+	if errArr := swg.Errors(); len(errArr) == 0 {
+		return errArr[0]
+	}
+
+	return nil
 }
 
 func (c *Core) Stop() error {

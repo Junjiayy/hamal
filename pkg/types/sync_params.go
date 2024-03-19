@@ -61,6 +61,24 @@ func (s *SyncParams) GetJoinColumn() string {
 	return ""
 }
 
+// MergeOldToData 获取这条记录 更新之前的所有数据
+func (s *SyncParams) MergeOldToData() map[string]string {
+	newData := s.Data
+
+	if s.Old != nil {
+		newData = make(map[string]string, len(s.Data))
+		for key, value := range s.Data {
+			if oldValue, ok := s.Old[key]; ok {
+				newData[key] = oldValue
+			} else {
+				newData[key] = value
+			}
+		}
+	}
+
+	return newData
+}
+
 // GetUpdateValues 获取当次更新的数据 格式: {"column": "value"}
 func (s *SyncParams) GetUpdateValues(updatedColumns []string) interface{} {
 
@@ -144,6 +162,10 @@ func (wg *syncWaitGroup) AddErr(errArr ...error) {
 	defer wg.mux.Unlock()
 
 	wg.errors = append(wg.errors, errArr...)
+}
+
+func (wg *syncWaitGroup) Recycle() {
+	_syncWaitGroupPool.Put(wg)
 }
 
 func (wg *syncWaitGroup) Errors() []error {
