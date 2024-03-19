@@ -24,6 +24,8 @@ var (
 func init() {
 	SetReaderConstructor(types.ReaderTypeWeb, NewHttpReaderFunc)
 	SetReaderConfigConstructor(types.ReaderTypeWeb, NewHttpReaderConfigFunc)
+	SetReaderConstructor(types.ReaderTypeKafka, NewKafkaReaderFunc)
+	SetReaderConfigConstructor(types.ReaderTypeKafka, NewKafkaReaderConfigFunc)
 }
 
 // SetReaderConstructor 注册读取器构造函数

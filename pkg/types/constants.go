@@ -15,7 +15,8 @@ const SyncTypeInner = "inner" // 只允许复制一个字段，复制到目标�
 
 const identifyIdColumnSeparator = "-" // 标识ID字段分隔符
 
-const ReaderTypeWeb = "web" // web 类型读取器
+const ReaderTypeWeb = "web"     // web 类型读取器
+const ReaderTypeKafka = "kafka" // kafka 类型读取器
 
 const DataSourceMysql = "mysql"      // mysql 类型数据源
 const DataSourceElasticSearch = "es" // es 类型数据源
