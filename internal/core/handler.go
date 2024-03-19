@@ -110,6 +110,10 @@ func (h *handler) unlockRecordByMutex(mutex *redsync.Mutex, lockKey string) {
 
 // insert insert 事件同步方法
 func (h *handler) insert(params *types.SyncParams) ([]string, error) {
+	// 判断同步过滤条件是否通过
+	if !params.Rule.EvaluateFilterConditions(params.Data) {
+		return nil, nil
+	}
 	// 插入的数据，如果软删除字段已存在标识，不执行同步操作直接返回
 	if deletedColumnValue, ok := params.Data[params.Rule.SoftDeleteField]; ok &&
 		deletedColumnValue != params.Rule.UnSoftDeleteValue {
@@ -147,7 +151,9 @@ func (h *handler) update(params *types.SyncParams) ([]string, error) {
 		if err := h.invoke(params.Clone(types.EventTypeInsert)); err != nil {
 			return nil, err
 		}
-		if err := h.invoke(params.Clone(types.EventTypeDelete)); err != nil {
+		deleteParams := params.Clone(types.EventTypeDelete)
+		deleteParams.Data, deleteParams.Old = deleteParams.MergeOldToData(), nil
+		if err := h.invoke(deleteParams); err != nil {
 			return nil, err
 		}
 
@@ -167,9 +173,27 @@ func (h *handler) update(params *types.SyncParams) ([]string, error) {
 		return h.insert(params)
 	}
 
-	writer, ok := h.ws[params.Rule.TargetType]
+	oldFilterOk := params.Rule.EvaluateFilterConditions(params.MergeOldToData())
+	dataFilterOk := params.Rule.EvaluateFilterConditions(params.Data)
+	// 判断同步过滤条件是否通过
+	if !dataFilterOk && oldFilterOk { // 新数据判断不通过，老数据通过，删除老数据
+		params.RealEventType = types.EventTypeDelete
+		return nil, h.delete(params)
+	} else if dataFilterOk && !oldFilterOk { // 新数据判断通过，老数据不通过，新增数据
+		params.RealEventType = types.EventTypeInsert
+		return h.insert(params)
+	} else if !dataFilterOk && !oldFilterOk {
+		return nil, nil
+	}
+
+	return h.realUpdate(params)
+}
+
+// realUpdate 真实 update 方法
+func (h *handler) realUpdate(params *types.SyncParams) ([]string, error) {
+	writer, ok := h.ws[params.Rule.Target]
 	if !ok {
-		return nil, errors.Errorf("undefined writer %s", params.Rule.TargetType)
+		return nil, errors.Errorf("undefined writer %s", params.Rule.Target)
 	}
 
 	var updatedColumns []string
@@ -194,9 +218,9 @@ func (h *handler) delete(params *types.SyncParams) error {
 	if !isNotEmpty {
 		return err
 	}
-	writer, ok := h.ws[params.Rule.TargetType]
+	writer, ok := h.ws[params.Rule.Target]
 	if !ok {
-		return errors.Errorf("undefined writer %s", params.Rule.TargetType)
+		return errors.Errorf("undefined writer %s", params.Rule.Target)
 	}
 
 	return writer.Delete(params)
