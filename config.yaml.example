@@ -1,0 +1,43 @@
+pool_size: 10
+datasource:
+  name: "test"
+  type: "mysql"
+  host: "10.211.55.4"
+  port: 3306
+  username: "root"
+  password: "123456"
+  target: "sync_tests"
+redis:
+  addr: "10.211.55.4:6379"
+  password: "123456"
+  db: 1
+readers:
+  - name: "web"
+    params:
+      listen: ":8081"
+      push_path: "/v1/push"
+rules:
+  sync_tests_orders:
+    - database: "sync_tests"
+      table: "orders"
+      primary_key: "order_sn"
+      lock_columns: ["id"]
+      columns:
+        order_sn: "original_order_sn"
+        user_id: "user_id"
+        price: "trans_price"
+      soft_delete_field: "deleted_at"
+      un_soft_delete_value: "0"
+      target: "test"
+      target_type: "mysql"
+      target_database: "sync_tests"
+      target_table: "user_trans_records"
+      sync_type: "copy"
+      target_extra_params:
+        type: "order"
+      data_conditions:
+        and:
+          - column: "price"
+            operator: "="
+            value: "5000"
+
