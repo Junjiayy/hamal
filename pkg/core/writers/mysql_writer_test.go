@@ -16,16 +16,15 @@ var (
 func initMysqlWriter(t *testing.T) {
 	mysqlInitOnce.Do(func() {
 		dataSource := datasources.NewMysqlDataSource()
-		err := dataSource.SetDataSource(&datasources.DataSourceConfig{
-			Name: "test", Host: "10.211.55.4", Port: 3306,
-			Username: "root", Password: "123456", Target: "sync_tests",
-			Debug: true,
-		})
-
-		if err != nil {
-			t.Fatal(err)
+		configs := map[string]datasources.DataSourceConfig{
+			"test": {
+				Name: "test", Host: "10.211.55.4", Port: 3306,
+				Username: "root", Password: "123456", Target: "sync_tests",
+				Debug: true,
+			},
 		}
 
+		dataSource.(*datasources.MysqlDataSource).SetConfigs(configs)
 		source, _ := dataSource.GetDataSource("test")
 		source.(*gorm.DB).Exec("TRUNCATE test_user_trans_records")
 		mw = MysqlWriter{&writer{dataSources: dataSource}}

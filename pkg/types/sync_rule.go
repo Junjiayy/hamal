@@ -1,6 +1,11 @@
 package types
 
-import "github.com/Junjiayy/hamal/pkg/tools"
+import (
+	"encoding/json"
+	"github.com/Junjiayy/hamal/pkg/tools"
+	"github.com/pkg/errors"
+	"strings"
+)
 
 type (
 	// SyncRule 同步规则
@@ -25,6 +30,8 @@ type (
 		TargetExtraParams map[string]string `json:"target_extra_params,omitempty" yaml:"target_extra_params,omitempty"` // 目标额外参数，常量同步时一起写入目标表
 	}
 
+	innerSyncRule SyncRule
+
 	// DataFilterCondition  数据规则条件
 	DataFilterCondition struct {
 		Column      string                           `json:"column,omitempty"`       // 字段名
@@ -34,6 +41,29 @@ type (
 		Children    map[string][]DataFilterCondition `json:"children,omitempty"`     // 子条件
 	}
 )
+
+func (sr *SyncRule) UnmarshalJSON(bytes []byte) error {
+	innerSr := (*innerSyncRule)(sr)
+	if err := json.Unmarshal(bytes, innerSr); err != nil {
+		return err
+	}
+	targets := strings.Split(innerSr.Target, ":")
+	if len(targets) != 2 {
+		return errors.Errorf("target formt error, type:connect(.db).table, current: %s", innerSr.Target)
+	}
+
+	innerSr.TargetType = targets[0]
+	targetParams := strings.Split(targets[1], ".")
+	if length := len(targetParams); length < 2 {
+		return errors.Errorf("target format error connect(.db).table, current: %s", targets[1])
+	} else if length >= 3 {
+		innerSr.Target, innerSr.TargetDatabase, innerSr.TargetTable = targetParams[0], targetParams[1], targetParams[2]
+	} else {
+		innerSr.Target, innerSr.TargetTable = targetParams[0], targetParams[1]
+	}
+
+	return nil
+}
 
 // EvaluateFilterConditions 判断是否符合同步条件
 func (sr *SyncRule) EvaluateFilterConditions(data map[string]string) bool {

@@ -2,21 +2,23 @@ package datasources
 
 import (
 	"fmt"
-	"github.com/pkg/errors"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
 
 type MysqlDataSource struct {
-	clients map[string]*gorm.DB
+	*DataSourceBase
 }
 
 func NewMysqlDataSource() DataSource {
-	return &MysqlDataSource{make(map[string]*gorm.DB)}
+	return &MysqlDataSource{
+		NewDataSourceBase(newMysqlConnectFunc, closeMysqlConnectFunc),
+	}
 }
 
-func (m *MysqlDataSource) SetDataSource(conf *DataSourceConfig) error {
+// newMysqlConnectFunc 通过配置创建 mysql 连接函数
+func newMysqlConnectFunc(conf DataSourceConfig) (interface{}, error) {
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=Local",
 		conf.Username, conf.Password, conf.Host, conf.Port, conf.Target)
 	connectConfig := &gorm.Config{Logger: logger.Default.LogMode(logger.Info)}
@@ -24,20 +26,16 @@ func (m *MysqlDataSource) SetDataSource(conf *DataSourceConfig) error {
 		connectConfig.Logger = logger.Default.LogMode(logger.Warn)
 	}
 
-	db, err := gorm.Open(mysql.Open(dsn), connectConfig)
+	return gorm.Open(mysql.Open(dsn), connectConfig)
+}
+
+// closeMysqlConnectFunc 关闭 mysql 连接函数
+func closeMysqlConnectFunc(cli interface{}) error {
+	// todo: 考虑优雅关闭的问题，如果当前连接正在被使用怎么处理
+	sqlDb, err := cli.(*gorm.DB).DB()
 	if err != nil {
 		return err
 	}
-	m.clients[conf.Name] = db
 
-	return nil
-}
-
-func (m *MysqlDataSource) GetDataSource(name string) (interface{}, error) {
-	cli, ok := m.clients[name]
-	if !ok {
-		return nil, errors.Errorf("get not exists connect %s", name)
-	}
-
-	return cli, nil
+	return sqlDb.Close()
 }

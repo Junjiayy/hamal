@@ -4,6 +4,7 @@ require (
 	github.com/gin-gonic/gin v1.7.7
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/go-redsync/redsync/v4 v4.8.1
+	github.com/go-zookeeper/zk v1.0.3
 	github.com/olivere/elastic/v7 v7.0.32
 	github.com/panjf2000/ants/v2 v2.7.2
 	github.com/pkg/errors v0.9.1

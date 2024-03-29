@@ -2,6 +2,7 @@ package readers
 
 import (
 	"context"
+	"github.com/Junjiayy/hamal/pkg/tools"
 	"github.com/Junjiayy/hamal/pkg/types"
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
@@ -14,36 +15,28 @@ import (
 
 type (
 	HttpReader struct {
-		conf   *HttpReaderConfig
+		ReaderBase
 		srv    *http.Server
 		wg     *sync.WaitGroup
-		ctx    context.Context
 		params chan *types.BinlogParams
-	}
-
-	HttpReaderConfig struct {
-		Listen       string        `json:"listen" yaml:"listen"`                                                  // 监听端口
-		PushPath     string        `json:"push_path" yaml:"push_path"`                                            // 请求接收路径
-		PreParamsLen int32         `json:"pre_params_len,omitempty" yaml:"pre_params_len,omitempty" default:"10"` // params 管道缓冲长度
-		PushTimeout  time.Duration `json:"push_timeout,omitempty" yaml:"push_timeout,omitempty" default:"1s"`     // 超时时间
 	}
 )
 
 var configAssertErr = errors.New("reader config assert failed")
 
-func NewHttpReaderFunc(conf interface{}, wg *sync.WaitGroup, ctx context.Context) (Reader, error) {
+func NewHttpReaderFunc(conf ReaderConfig, wg *sync.WaitGroup, ctx context.Context) (Reader, error) {
 	config, ok := conf.(*HttpReaderConfig)
 	if !ok {
 		return nil, configAssertErr
 	}
 	reader := &HttpReader{
-		params: make(chan *types.BinlogParams, config.PreParamsLen),
-		wg:     wg, ctx: ctx, conf: config,
+		params:     make(chan *types.BinlogParams, config.PreParamsLen),
+		ReaderBase: NewReaderBase(conf, ctx),
 	}
 
 	engine := gin.Default()
-	engine.POST(reader.conf.PushPath, reader.httpAcceptHandle)
-	reader.srv = &http.Server{Addr: reader.conf.Listen, Handler: engine}
+	engine.POST(config.PushPath, reader.httpAcceptHandle)
+	reader.srv = &http.Server{Addr: config.Listen, Handler: engine}
 	wg.Add(1)
 	go reader.listen()
 
@@ -63,7 +56,8 @@ func (h *HttpReader) httpAcceptHandle(ctx *gin.Context) {
 		return
 	}
 
-	timeout, cancelFunc := context.WithTimeout(ctx.Request.Context(), h.conf.PushTimeout)
+	timeout, cancelFunc := context.WithTimeout(ctx.Request.Context(),
+		h.conf.(*HttpReaderConfig).PushTimeout)
 	defer cancelFunc()
 
 	select {
@@ -102,14 +96,32 @@ func (h *HttpReader) Complete(params *types.BinlogParams) error {
 }
 
 func (h *HttpReader) Close() error {
-	if h.srv != nil {
-		timeout, cancelFunc := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancelFunc()
+	if h.FirstClose() {
+		if h.srv != nil {
+			timeout, cancelFunc := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancelFunc()
 
-		return h.srv.Shutdown(timeout)
+			return h.srv.Shutdown(timeout)
+		}
+
+		close(h.params)
 	}
 
-	close(h.params)
-
 	return nil
+}
+
+type HttpReaderConfig struct {
+	Listen       string        `json:"listen" yaml:"listen"`                                                  // 监听端口
+	PushPath     string        `json:"push_path" yaml:"push_path"`                                            // 请求接收路径
+	PreParamsLen int32         `json:"pre_params_len,omitempty" yaml:"pre_params_len,omitempty" default:"10"` // params 管道缓冲长度
+	PushTimeout  time.Duration `json:"push_timeout,omitempty" yaml:"push_timeout,omitempty" default:"1s"`     // 超时时间
+}
+
+func (h *HttpReaderConfig) GetUniqueId() string {
+	return tools.Hash32("test")
+}
+
+func (h *HttpReaderConfig) Equal(config ReaderConfig) bool {
+	// http 类型主要用于测试，所以始终只保留一个
+	return true
 }

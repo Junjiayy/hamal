@@ -1,10 +1,12 @@
-package core
+package handlers
 
 import (
 	"fmt"
 	"github.com/Junjiayy/hamal/pkg/core/writers"
 	"github.com/Junjiayy/hamal/pkg/types"
+	"github.com/go-redis/redis/v8"
 	"github.com/go-redsync/redsync/v4"
+	"github.com/go-redsync/redsync/v4/redis/goredis/v8"
 	"github.com/panjf2000/ants/v2"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
@@ -12,9 +14,9 @@ import (
 	"time"
 )
 
-type handler struct {
+type Handler struct {
 	filter types.Filter
-	ws     map[string]writers.Writer
+	wp     *writers.WriterPool
 	pool   *ants.PoolWithFunc
 	rs     *redsync.Redsync
 }
@@ -23,10 +25,27 @@ var (
 	emptyErr = errors.New("empty")
 )
 
-const syncLockKeyTpl = "lock:%s:%s::keys" // 格式 lock:database:table:column1_column2...
+const syncLockKeyTpl = "lock:%s:%s::keys" // 格式 lock:database:table:column1_column2..
 
-// invoke 分配任务到 携程池
-func (h *handler) invoke(params *types.SyncParams) (err error) {
+func NewHandler(redisCli *redis.Client, poolSize int) (h *Handler, err error) {
+	h = &Handler{
+		wp:     writers.NewWriterPool(),
+		rs:     redsync.New(goredis.NewPool(redisCli)),
+		filter: new(emptyFilter),
+	}
+
+	h.pool, err = ants.NewPoolWithFunc(poolSize, h.sync,
+		ants.WithNonblocking(true))
+
+	return
+}
+
+func (h *Handler) GetWriterPool() *writers.WriterPool {
+	return h.wp
+}
+
+// Invoke 分配任务到 携程池
+func (h *Handler) Invoke(params *types.SyncParams) (err error) {
 	defer func() {
 		if err != nil {
 			// 如果任务放到携程池失败，直接释放本次执行参数
@@ -43,7 +62,7 @@ func (h *handler) invoke(params *types.SyncParams) (err error) {
 }
 
 // run 携程池执行方法，主要同步逻辑
-func (h *handler) sync(paramsInter interface{}) {
+func (h *Handler) sync(paramsInter interface{}) {
 	params := paramsInter.(*types.SyncParams)
 	defer params.Recycle()
 	defer func() {
@@ -83,7 +102,7 @@ func (h *handler) sync(paramsInter interface{}) {
 
 // lockRecordByParams 通过同步参数给记录添加分布式锁
 // 防止并发修改时数据错误
-func (h *handler) lockRecordByParams(params *types.SyncParams) (*redsync.Mutex, string) {
+func (h *Handler) lockRecordByParams(params *types.SyncParams) (*redsync.Mutex, string) {
 	lockArgs := []interface{}{params.Rule.Database, params.Rule.Table}
 	for _, key := range params.Rule.LockColumns {
 		lockArgs = append(lockArgs, params.Data[key])
@@ -102,14 +121,14 @@ func (h *handler) lockRecordByParams(params *types.SyncParams) (*redsync.Mutex, 
 }
 
 // unlockRecordByMutex 解锁分布式锁
-func (h *handler) unlockRecordByMutex(mutex *redsync.Mutex, lockKey string) {
+func (h *Handler) unlockRecordByMutex(mutex *redsync.Mutex, lockKey string) {
 	if _, err := mutex.Unlock(); err != nil {
 		zap.L().Error("redis 解锁失败", zap.Error(err), zap.String("key", lockKey))
 	}
 }
 
 // insert insert 事件同步方法
-func (h *handler) insert(params *types.SyncParams) ([]string, error) {
+func (h *Handler) insert(params *types.SyncParams) ([]string, error) {
 	// 判断同步过滤条件是否通过
 	if !params.Rule.EvaluateFilterConditions(params.Data) {
 		return nil, nil
@@ -120,9 +139,9 @@ func (h *handler) insert(params *types.SyncParams) ([]string, error) {
 		return nil, emptyErr
 	}
 
-	writer, ok := h.ws[params.Rule.Target]
-	if !ok {
-		return nil, errors.Errorf("undefined writer %s", params.Rule.Target)
+	writer, err := h.wp.GetWriter(params.Rule.TargetType)
+	if err != nil {
+		return nil, err
 	}
 
 	var updatedColumns []string
@@ -145,15 +164,15 @@ func (h *handler) insert(params *types.SyncParams) ([]string, error) {
 }
 
 // update update 同步事件
-func (h *handler) update(params *types.SyncParams) ([]string, error) {
+func (h *Handler) update(params *types.SyncParams) ([]string, error) {
 	// 主键更新, 执行老记录删除，和新记录新增
 	if params.IsPrimaryKeyUpdated() {
-		if err := h.invoke(params.Clone(types.EventTypeInsert)); err != nil {
+		if err := h.Invoke(params.Clone(types.EventTypeInsert)); err != nil {
 			return nil, err
 		}
 		deleteParams := params.Clone(types.EventTypeDelete)
 		deleteParams.Data, deleteParams.Old = deleteParams.MergeOldToData(), nil
-		if err := h.invoke(deleteParams); err != nil {
+		if err := h.Invoke(deleteParams); err != nil {
 			return nil, err
 		}
 
@@ -190,10 +209,10 @@ func (h *handler) update(params *types.SyncParams) ([]string, error) {
 }
 
 // realUpdate 真实 update 方法
-func (h *handler) realUpdate(params *types.SyncParams) ([]string, error) {
-	writer, ok := h.ws[params.Rule.Target]
-	if !ok {
-		return nil, errors.Errorf("undefined writer %s", params.Rule.Target)
+func (h *Handler) realUpdate(params *types.SyncParams) ([]string, error) {
+	writer, err := h.wp.GetWriter(params.Rule.TargetType)
+	if err != nil {
+		return nil, err
 	}
 
 	var updatedColumns []string
@@ -213,31 +232,21 @@ func (h *handler) realUpdate(params *types.SyncParams) ([]string, error) {
 }
 
 // delete delete 事件同步方法
-func (h *handler) delete(params *types.SyncParams) error {
+func (h *Handler) delete(params *types.SyncParams) error {
 	_, err, isNotEmpty := h.filter.FilterColumns(params, nil)
 	if !isNotEmpty {
 		return err
 	}
-	writer, ok := h.ws[params.Rule.Target]
-	if !ok {
-		return errors.Errorf("undefined writer %s", params.Rule.Target)
+	writer, err := h.wp.GetWriter(params.Rule.TargetType)
+	if err != nil {
+		return err
 	}
 
 	return writer.Delete(params)
 }
 
 // writeLog 写入日志，并追加错误到本次执行参数中
-func (h *handler) writeLog(params *types.SyncParams, err error) {
+func (h *Handler) writeLog(params *types.SyncParams, err error) {
 	zap.L().Error("同步失败", zap.Reflect("params", params), zap.Error(err))
 	params.GetWg().AddErr(err)
-}
-
-type emptyFilter struct{}
-
-func (e *emptyFilter) InsertEventRecord(params *types.SyncParams, updatedColumns []string) error {
-	return nil
-}
-
-func (e *emptyFilter) FilterColumns(params *types.SyncParams, columns []string) ([]string, error, bool) {
-	return columns, nil, true
 }

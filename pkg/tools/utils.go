@@ -2,7 +2,9 @@ package tools
 
 import (
 	"encoding/json"
+	"fmt"
 	"gopkg.in/yaml.v2"
+	"hash/fnv"
 	"reflect"
 	"strconv"
 	"strings"
@@ -150,4 +152,16 @@ func CamelToSnake(dest string) string {
 		}
 	}
 	return result.String()
+}
+
+// Hash32 快速获取 32 位hash
+func Hash32(source string) string {
+	h := fnv.New32a() // 使用32位FNV-1a算法
+	_, err := h.Write([]byte(source))
+	if err != nil {
+		panic(err) // 处理写入错误
+	}
+
+	return fmt.Sprintf("%x",
+		h.Sum32())
 }

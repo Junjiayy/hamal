@@ -18,13 +18,13 @@ var (
 func initEsWriter(t *testing.T) {
 	esInitOnce.Do(func() {
 		dataSource := datasources.NewElasticSearchDataSource()
-		err := dataSource.SetDataSource(&datasources.DataSourceConfig{
-			Name: "test", Host: "10.211.55.4", Port: 9200,
-		})
+		dataSource.(*datasources.ElasticSearchDataSource).
+			SetConfigs(map[string]datasources.DataSourceConfig{
+				"test": {
+					Name: "test", Host: "10.211.55.4", Port: 9200,
+				},
+			})
 
-		if err != nil {
-			t.Fatal(err)
-		}
 		cli, _ := dataSource.GetDataSource("test")
 		cli.(*elastic.Client).DeleteByQuery("test_user_trans_records").
 			Query(elastic.NewMatchAllQuery()).Do(context.Background())

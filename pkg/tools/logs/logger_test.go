@@ -20,7 +20,7 @@ func TestFormat(t *testing.T) {
 	config := zap.NewProductionEncoderConfig()
 	core := zapcore.NewCore(NewZapJsonEncoder(config), zapcore.AddSync(os.Stdout), zapcore.InfoLevel)
 	logger := zap.New(core)
-	logger.Error("test", ParseErr(err)...)
+	logger.Error("test", ParseErr(err))
 	//ParseErr(err)
 }
 

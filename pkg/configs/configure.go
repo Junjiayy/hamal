@@ -10,10 +10,10 @@ import (
 
 type (
 	SyncConfig struct {
-		DataSource  *datasources.DataSourceConfig `json:"datasource" yaml:"datasource"`
-		PoolSize    int                           `json:"pool_size,omitempty" yaml:"pool_size,omitempty" default:"50"` // 协程池大小
-		Readers     []*ReaderConfig               `json:"readers" yaml:"readers"`                                      // 读取器配置
-		Rules       map[string][]*types.SyncRule  `json:"rules" yaml:"rules"`                                          // 同步规则
+		DataSource  datasources.DataSourceConfig `json:"datasource" yaml:"datasource"`
+		PoolSize    int                          `json:"pool_size,omitempty" yaml:"pool_size,omitempty" default:"50"` // 协程池大小
+		Readers     []*ReaderConfig              `json:"readers" yaml:"readers"`                                      // 读取器配置
+		Rules       map[string][]*types.SyncRule `json:"rules" yaml:"rules"`                                          // 同步规则
 		RedisConfig struct {
 			Addr     string `json:"addr" yaml:"addr"`
 			Password string `json:"password,omitempty" yaml:"password,omitempty"`

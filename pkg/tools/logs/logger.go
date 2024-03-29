@@ -33,9 +33,20 @@ type (
 
 var fileAndLinePattern = regexp.MustCompile(`\s+([^:]+):(\d+)`)
 
-func ParseErr(err error) []zap.Field {
-	fields := []zap.Field{zap.Error(err)}
+// Error 记录 error 级别日志，并解析堆栈
+func Error(message string, err error, fields ...zap.Field) {
+	newFields := []zap.Field{zap.Error(err)}
+	if _, ok := err.(stackError); ok {
+		newFields = append(newFields, ParseErr(err))
+	}
 
+	newFields = append(newFields, fields...)
+
+	zap.L().Error(message, newFields...)
+}
+
+// ParseErr 解析携带堆栈的错误
+func ParseErr(err error) zap.Field {
 	if _, ok := err.(stackError); ok {
 		lines := strings.Split(fmt.Sprintf("%+v", err), "\n")
 		if length := len(lines); length > 1 {
@@ -71,13 +82,14 @@ func ParseErr(err error) []zap.Field {
 			}
 
 			if len(contexts) > 0 {
-				fields = append(fields, zap.Array("context",
-					stackErrContexts(contexts)))
+				return zap.Array("context", stackErrContexts(contexts))
 			}
 		}
 	}
 
-	return fields
+	return zap.Array("context", stackErrContexts([]stackErrContext{
+		{err: err.Error()},
+	}))
 }
 
 func (formats stackFormats) MarshalLogArray(encoder zapcore.ArrayEncoder) error {

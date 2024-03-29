@@ -1,4 +1,4 @@
-package core
+package handlers
 
 import (
 	"github.com/Junjiayy/hamal/pkg/core/writers"

@@ -32,9 +32,9 @@ func main() {
 	}
 
 	dataSource := datasources.GetDataSourceConstructor(conf.DataSource.Type)()
-	if err = dataSource.SetDataSource(conf.DataSource); err != nil {
-		log.Fatalln(err)
-	}
+	dataSource.SetConfigs(map[string]datasources.DataSourceConfig{
+		conf.DataSource.Name: conf.DataSource,
+	})
 
 	redisCli := redis.NewClient(&redis.Options{
 		Addr: conf.RedisConfig.Addr, DB: conf.RedisConfig.DB,
@@ -46,7 +46,10 @@ func main() {
 	logger := zap.New(zapCore)
 	zap.ReplaceGlobals(logger)
 
-	engine := core.NewCore(&conf, redisCli)
+	engine, err := core.NewCore(&conf, redisCli)
+	if err != nil {
+		log.Fatalln(err)
+	}
 	writerConstructor := writers.GetWriterConstructor(conf.DataSource.Type)
 	engine.SetWriter(conf.DataSource.Name, writerConstructor(dataSource))
 
