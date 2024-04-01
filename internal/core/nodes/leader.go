@@ -7,6 +7,7 @@ import (
 	"github.com/Junjiayy/hamal/internal/core/runners"
 	"github.com/Junjiayy/hamal/pkg/core/readers"
 	"github.com/go-zookeeper/zk"
+	"github.com/pkg/errors"
 	"math"
 	"sync"
 )
@@ -23,17 +24,25 @@ type (
 		followerPaths        map[string]struct{}
 		taskSharingFollowers map[string]string
 		rwMux                *sync.RWMutex
-		runnerCloseChan      <-chan struct{}
+		runnerCloseChan      chan struct{}
+		val                  string
 	}
 )
 
 const readersPath = "/porter/readers" // 所有任务节点
 
-func newLeaderNode(parent context.Context) *leader {
+func newLeaderNode(parent context.Context, zkConn *zk.Conn, val string) *leader {
 	runnerCloseChan := make(chan struct{}, 1)
+	ctx, cancelFunc := context.WithCancel(parent)
 
 	return &leader{
-		runner: runners.NewRunner(parent, runnerCloseChan),
+		runner:               runners.NewRunner(ctx, runnerCloseChan),
+		taskSharingFollowers: make(map[string]string),
+		rwMux:                new(sync.RWMutex),
+		val:                  val,
+		node: node{
+			ctx: ctx, zkConn: zkConn, cancelFunc: cancelFunc,
+		},
 	}
 }
 
@@ -56,7 +65,12 @@ func (l *leader) run() error {
 	l.runner.RunWorker(l.watchFollowersChanged)
 	l.runner.RunWorker(l.watchNodeDataChange(readersPath, l.readersChanged))
 
-	return nil
+	// 阻塞: 等待 runnerCloseChan 通道读取事件
+	select {
+	case <-l.runnerCloseChan:
+		// 接受到 runner 关闭通道数据，说明 runner 已经被关闭
+		return l.stopOnceFunc()
+	}
 }
 
 // watchFollowersChanged 监听跟随者节点删除或新增
@@ -215,6 +229,41 @@ func (l *leader) getMinTaskNumFollowerPath() string {
 	return minFollowerPath
 }
 
-func (l *leader) stop() error {
+// stopOnceFunc 停止方法，只能调用一次，多次调用会 panic
+func (l *leader) stopOnceFunc() error {
+	// runners.Runner 可能会主动停止
+	// 如果是主动停止 leader.Stop 方法不会被主动调用，
+	// 不主动调用 leader.cancelFunc 也不会被调用，
+	// 但是 leader.cancelFunc 调用不会 panic
+	// 所以在这再调用一次
+	l.cancelFunc()
+	close(l.runnerCloseChan)
+	data, _, err := l.zkConn.Get(leaderPath)
+	if err != nil {
+		if errors.Is(err, zk.ErrNoNode) {
+			return nil
+		} else {
+			return err
+		}
+	}
+
+	if string(data) == l.val {
+		// 如果主节点和 l.val 相等，说明当前 leader 节点是由当前进程创建，删除 leader 节点
+		if err := l.zkConn.Delete(leaderPath, -1); err != nil {
+			return err
+		}
+	}
+
 	return nil
+}
+
+// stop 关闭 leader 任务逻辑, 只关闭 ctx 和 runner
+// 其他任务的关闭操作详见 run 方法
+// 当调用 runners.Runner 的 Stop 方法时，会触发 closeRunnerChan 通道写入事件
+// run 方法监听到 closeRunnerChan 事件后会关闭其他关闭项
+func (l *leader) stop() {
+	// 因为 runner 的所有任务协程都监听了 ctx
+	// 所以当 cancelFunc 被调用后，所有协程都会被停止，runner 等待被回收
+	l.cancelFunc()
+	l.runner.Stop()
 }

@@ -104,6 +104,7 @@ func (r *Runner) listenPeriodFailedNum() {
 	}
 }
 
+// Stop 结束任务执行器
 func (r *Runner) Stop() {
 	r.cancelFunc()
 	r.wg.Wait()

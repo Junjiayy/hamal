@@ -250,3 +250,11 @@ func (h *Handler) writeLog(params *types.SyncParams, err error) {
 	zap.L().Error("同步失败", zap.Reflect("params", params), zap.Error(err))
 	params.GetWg().AddErr(err)
 }
+
+// Release 释放处理器所有资源
+func (h *Handler) Release() {
+	h.pool.Release()
+	for _, writer := range h.wp.GetWriters() {
+		_ = writer.GetDataSource().Close()
+	}
+}

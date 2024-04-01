@@ -110,3 +110,8 @@ func (wp *WriterPool) GetWriter(wType string) (Writer, error) {
 
 	return w, nil
 }
+
+// GetWriters 获取所有写入器
+func (wp *WriterPool) GetWriters() map[string]Writer {
+	return wp.ws
+}

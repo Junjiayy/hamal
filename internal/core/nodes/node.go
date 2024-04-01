@@ -11,8 +11,9 @@ import (
 )
 
 type node struct {
-	ctx    context.Context
-	zkConn *zk.Conn
+	ctx        context.Context
+	zkConn     *zk.Conn
+	cancelFunc context.CancelFunc
 }
 
 // getNodeDataOrCreate 获取 zookeeper 节点数据，如果节点不存在则创建节点

@@ -8,27 +8,30 @@ import (
 	"github.com/Junjiayy/hamal/internal/core/runners"
 	"github.com/Junjiayy/hamal/pkg/core/datasources"
 	"github.com/Junjiayy/hamal/pkg/core/readers"
+	"github.com/Junjiayy/hamal/pkg/tools"
 	"github.com/Junjiayy/hamal/pkg/tools/logs"
 	"github.com/Junjiayy/hamal/pkg/types"
+	"github.com/go-redis/redis/v8"
 	"github.com/go-zookeeper/zk"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 	"io"
+	"strconv"
 	"sync"
+	"time"
 )
 
 type Follower struct {
 	node
-	Path      string
-	TaskNum   int
-	dbConfigs map[string]datasources.DataSourceConfig
-	rules     map[string][]*types.SyncRule
-	ruleRwMux sync.RWMutex
-	rs        map[string]readers.Reader
-	rsMux     *sync.Mutex
-	runner    *runners.Runner
-	h         *handlers.Handler
-	wg        *sync.WaitGroup
+	rules           map[string][]*types.SyncRule
+	ruleRwMux       *sync.RWMutex
+	rs              map[string]readers.Reader
+	rsMux           *sync.Mutex
+	runner          *runners.Runner
+	runnerCloseChan chan struct{}
+	h               *handlers.Handler
+	wg              *sync.WaitGroup
+	l               *leader
 }
 
 const rulesPath = "/porter/rules"            // 任务监听目录
@@ -37,16 +40,27 @@ const followerRootPath = "/porter/followers" // 任务节点根目录
 const writerConfigPath = "/porter/writers"   // 写入器配置监听目录
 const eventLockPath = "/porter/event-lock"   // 事件锁目录，主要防止 follower 和 leader 节点初始化时数据不正确
 
-func NewFollowerNode(ctx context.Context, conn *zk.Conn) *Follower {
-	return &Follower{
-		dbConfigs: make(map[string]datasources.DataSourceConfig),
-		rules:     make(map[string][]*types.SyncRule),
-		rs:        make(map[string]readers.Reader),
-		rsMux:     new(sync.Mutex),
-		node: node{
-			ctx: ctx, zkConn: conn,
-		},
+func NewFollowerNode(parent context.Context, redisCli *redis.Client, zkConn *zk.Conn, pSize int) (*Follower, error) {
+	h, err := handlers.NewHandler(redisCli, pSize)
+	if err != nil {
+		return nil, err
 	}
+	ctx, cancelFunc := context.WithCancel(parent)
+	runnerCloseChan := make(chan struct{}, 1)
+
+	return &Follower{
+		rules:           make(map[string][]*types.SyncRule),
+		ruleRwMux:       new(sync.RWMutex),
+		rs:              make(map[string]readers.Reader),
+		rsMux:           new(sync.Mutex),
+		runner:          runners.NewRunner(parent, runnerCloseChan),
+		runnerCloseChan: runnerCloseChan,
+		h:               h,
+		wg:              new(sync.WaitGroup),
+		node: node{
+			ctx: ctx, zkConn: zkConn, cancelFunc: cancelFunc,
+		},
+	}, nil
 }
 
 func (f *Follower) Run() error {
@@ -78,7 +92,12 @@ func (f *Follower) Run() error {
 	// 所以 leader 节点的 Follower 也会监听主节点删除事件
 	f.runner.RunWorker(f.watchLeaderNodeDeleted)
 
-	return nil
+	// 阻塞: 等待 runnerCloseChan 通道读取事件
+	select {
+	case <-f.runnerCloseChan:
+		// 接受到 runner 关闭通道数据，说明 runner 已经被关闭
+		return f.stopOnceFunc()
+	}
 }
 
 // watchLeaderNodeDeleted 监听 leader 节点删除事件
@@ -121,9 +140,17 @@ func (f *Follower) watchLeaderNodeDeleted(ctx context.Context) {
 	}
 }
 
+// preemptLeaderNode 争抢 leader 节点，
+// 争抢到后执行 leader 逻辑，并阻塞当前 goroutine，等待 leader 节点被释放
 func (f *Follower) preemptLeaderNode() error {
-	if _, err := f.zkConn.Create(leaderPath, nil, zk.FlagEphemeral,
+	leaderNodeVal := tools.Hash32(strconv.Itoa(time.Now().Nanosecond()))
+	if _, err := f.zkConn.Create(leaderPath, []byte(leaderNodeVal), zk.FlagEphemeral,
 		zk.WorldACL(zk.PermAll)); err != nil {
+		return err
+	}
+
+	f.l = newLeaderNode(f.ctx, f.zkConn, leaderNodeVal)
+	if err := f.l.run(); err != nil {
 		return err
 	}
 
@@ -213,9 +240,6 @@ func (f *Follower) listen(reader readers.Reader) func(ctx context.Context) {
 				return
 			case <-ctx.Done():
 				// Runner 被关闭
-				if err := reader.Close(); err != nil {
-					logs.Error("close reader failed", errors.WithStack(err))
-				}
 				return
 			default:
 				bingLogParams, err := reader.Read()
@@ -277,4 +301,44 @@ func (f *Follower) submitToPoolExec(binLogParams *types.BinlogParams) error {
 	}
 
 	return nil
+}
+
+// stopOnceFunc 停止方法，只能调用一次，多次调用会 panic
+// 当当前方法被调用时，runners.Runner.Stop 方法肯定已经被调用
+// 所有 goroutine 都已经被停止
+// 所有不用考虑有任务未完成的问题
+func (f *Follower) stopOnceFunc() error {
+	// runners.Runner 可能会主动停止
+	// 如果是主动停止 Follower.Stop 方法不会被主动调用，
+	// 不主动调用 Follower.cancelFunc 也不会被调用，
+	// 但是 Follower.cancelFunc 调用不会 panic
+	// 所以在这再调用一次
+	f.cancelFunc()
+	close(f.runnerCloseChan)
+	// 释放处理器
+	f.h.Release()
+	// 关闭所有读取器
+	var lastErr error
+	for _, reader := range f.rs {
+		if err := reader.Close(); err != nil {
+			logs.Error("close reader failed", errors.WithStack(err))
+			lastErr = err
+		}
+	}
+
+	// 如果 leader 节点不为 nil 关闭 leader 节点
+	if f.l != nil {
+		f.l.stop()
+	}
+
+	return lastErr
+}
+
+func (f *Follower) Stop() {
+	// 因为 runner 的所有任务协程都监听了 ctx
+	// 这个 ctx 是所有 goroutine 的父级
+	// 当 f.ctx 被取消时，leader 的 ctx 和 leader.Runner 的 ctx 都会被取消
+	// 所以当 cancelFunc 被调用后，所有的 goroutine 都会被停止
+	f.cancelFunc()
+	f.runner.Stop()
 }
